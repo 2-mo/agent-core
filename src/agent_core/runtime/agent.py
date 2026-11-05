@@ -650,9 +650,29 @@ class _AgentHost:
         return message_tool_calls(assistant)
 
     def validate_tool_call(self, calls, prepared):
+        finish_reason = self.responses[-1].finish_reason
+        if calls and finish_reason not in (None, "stop", "tool_calls"):
+            raise ValueError(
+                f"tool calls require a complete model response; finish_reason={finish_reason!r}"
+            )
         ids = [call.get("id") for call in calls]
         if any(not value for value in ids) or len(ids) != len(set(ids)):
             raise ValueError("tool calls require distinct non-empty IDs")
+        names = [(call.get("function") or {}).get("name") for call in calls]
+        if prepared.policy is not None and prepared.policy.mode != "auto":
+            for name in names:
+                if name not in prepared.available_tools:
+                    raise ValueError(f"tool {name!r} is not allowed this turn")
+
+        choice = prepared.tool_choice
+        if isinstance(choice, dict) and choice.get("type") == "function":
+            forced_name = (choice.get("function") or {}).get("name")
+            if not names or any(name != forced_name for name in names):
+                raise ValueError(f"this turn requires a call to tool {forced_name!r}")
+        elif choice == "required" and not calls:
+            raise ValueError("this turn requires a tool call")
+        elif choice == "none" and calls:
+            raise ValueError("tool calls are disabled this turn")
         return list(calls)
 
     def normalize_assistant(self, assistant, parsed):

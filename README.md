@@ -117,6 +117,7 @@ flowchart LR
 ## Examples and documentation
 
 - [Offline tool loop](examples/offline_tools.py): run immediately with a scripted model.
+- [Local document catalog](examples/local_catalog.py): search files, observe argument correction, and save a trace offline.
 - [Tool-using agent](examples/tool_agent.py): connect your own endpoint.
 - [Agent delegation](examples/delegation.py): expose a specialist as a tool.
 - [Streaming](examples/streaming.py): read events as they arrive.

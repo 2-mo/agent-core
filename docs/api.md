@@ -99,7 +99,9 @@ editor = Agent(model, name="editor", instructions="Edit text for clarity.")
 coordinator = Agent(model, tools=[editor.as_tool()], max_calls=10)
 ```
 
-An `allow` policy limits the exposed tool set; a `force` policy selects one tool. A separate `final_tool="name"` requires that tool to succeed before completion. Tools receive arguments through the same validation boundary in each mode.
+An `allow` policy limits both the exposed tool set and which tools may execute in that turn. A `force` policy requires at least one call to its selected tool and rejects calls to other tools. The Agent validates the entire batch before executing any handler; a policy violation ends the run with `validation_error`. Direct `tool_choice` settings for a named tool, `required`, and `none` are checked at the same boundary. Expected tool argument errors still return `failed` so a later turn can correct them.
+
+A separate `final_tool="name"` requires that tool to succeed before completion. Tool calls from replies marked `length`, `content_filter`, or another unrecognized finish reason are rejected before execution, including calls to the final tool. Completed calls accept `tool_calls`, `stop`, or omitted finish metadata; a stream without a finish reason is rejected by the HTTP adapter.
 
 ## Concurrency and streaming
 

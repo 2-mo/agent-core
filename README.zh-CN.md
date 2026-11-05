@@ -32,6 +32,14 @@ uv run python examples/offline_tools.py
 
 离线示例使用明确编写的模型回复，实际执行工具注册、参数校验、调用、预算与轨迹记录，不需要模型账号或网络请求。
 
+更完整的[本地目录查询示例](examples/local_catalog.py)会检索附带的 Markdown 文档，演示参数错误、反馈与修正，并将轨迹写入 `outputs/catalog-runs.jsonl`：
+
+```bash
+uv run python examples/local_catalog.py
+```
+
+模型回复与纠错顺序由本地脚本给出，文件查询和工具执行使用实际实现；运行轨迹的查看方式见[示例说明](examples/README.md)。
+
 连接自己的模型服务时，设置：
 
 ```bash

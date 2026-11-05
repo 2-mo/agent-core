@@ -126,7 +126,7 @@ flowchart TD
 | 预期内的业务拒绝 | `ToolResult(status="failed", ...)` | 返回工具给出的解释，在预算内继续 |
 | 工具 schema 无效、handler 抛出异常、结果无法规范化 | `error` | 记录结果并终止运行 |
 
-这个表描述工具执行边界。模型回复自身存在格式问题，例如调用 ID 缺失或重复，会在分发工具之前失败。`failed` 表示可以让模型再做一次决策，不代表自动重试 handler，也不保证最终恢复成功。
+这个表描述工具执行边界。分发前，Agent 会检查整批调用的 ID、本轮工具限制和模型结束状态。调用 ID 缺失或重复、违反工具策略，以及来自截断或被过滤回复的工具调用，都会以 `validation_error` 终止运行，整批 handler 均不执行。`failed` 表示可以让模型再做一次决策，不代表自动重试 handler，也不保证最终恢复成功。
 
 ## Agent 本身也可以成为工具
 
@@ -144,7 +144,7 @@ coordinator = Agent(model, tools=[editor.as_tool()], max_calls=10)
 
 ## 运行时统一管理什么
 
-- **工具选择。** `ToolPolicy` 选择本轮向模型提供哪些 schema，也可以请求指定工具。应用的授权判断放在工具或领域 host 中；schema 的选择不构成授权机制。
+- **工具选择。** `ToolPolicy` 同时控制本轮向模型提供的 schema 与可执行工具。`allow` 拒绝集合外的调用，`force` 还要求模型调用指定工具。整批调用通过检查后才执行。业务层的授权判断仍由工具或领域 host 负责。
 - **完成条件。** `final_tool="name"` 将某个工具成功执行设为任务完成条件。它仍然是普通注册工具，无需另建一种工具类型。
 - **并发调度。** `tool_concurrency` 控制工具并发执行。完成事件可以按实际完成顺序发出，对话与轨迹条目按模型原始调用顺序提交。一项调用失败不会回滚其他并发工具的外部效果。
 - **运行预算。** 运行时检查取消、截止时间，以及模型请求和 token 预算。`max_calls` 统计模型请求，包含子 Agent 请求，不统计普通 Python 工具的调用次数。
@@ -163,4 +163,4 @@ coordinator = Agent(model, tools=[editor.as_tool()], max_calls=10)
 | [types.py](../src/agent_core/tools/types.py) | 结果规范化 |
 | [agent.py](../src/agent_core/runtime/agent.py) | 委派、调度、对话提交和轨迹记录 |
 
-完整的模型与工具循环可以直接运行[离线示例](../examples/offline_tools.py)，无需模型账号。应用层用法见 [API 指南](api.md)。
+完整的模型与工具循环可以直接运行[离线示例](../examples/offline_tools.py)，无需模型账号。[本地目录查询示例](../examples/local_catalog.py)还展示了参数拒绝、修正调用、实际文件检索与轨迹保存。应用层用法见 [API 指南](api.md)。
