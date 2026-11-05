@@ -5,15 +5,15 @@ from threading import Lock
 import httpx
 import pytest
 
-from agent_core import Agent, ChatModel, Conversation
+from agent_core import Agent, ChatModel, Conversation, ToolPolicy
 from agent_core.model.parallel import bounded_map
 from agent_core.runtime import TrajectoryRecord, TrajectoryRecorder
 
 
-def reply(text=None, calls=None, tokens=3):
+def reply(text=None, calls=None, tokens=3, finish_reason=None):
     return httpx.Response(200, json={
         "id": "reply-demo", "model": "demo-model",
-        "choices": [{"index": 0, "finish_reason": "tool_calls" if calls else "stop",
+        "choices": [{"index": 0, "finish_reason": finish_reason or ("tool_calls" if calls else "stop"),
                      "message": {"role": "assistant", "content": text, "tool_calls": calls or []}}],
         "usage": {"total_tokens": tokens},
     })
@@ -205,3 +205,136 @@ def test_agent_stream_returns_final_result():
         events = list(Agent(model).run_stream("Greet me"))
     assert events[-1].result.ok and events[-1].result.text == "Hello"
     assert events[-1].result.model_calls == 1
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("mode,returned_names", [
+    ("allow", ["allowed", "outside_turn"]),
+    ("force", []),
+    ("force", ["outside_turn"]),
+    ("named", []),
+    ("required", []),
+    ("none", ["allowed"]),
+])
+def test_agent_rejects_policy_violations_before_any_tool_runs(mode, returned_names, streaming):
+    invoked = []
+
+    def allowed():
+        invoked.append("allowed")
+        return "done"
+
+    def outside_turn():
+        invoked.append("outside_turn")
+        return "done"
+
+    calls = [tool_call(name, {}, f"call-{i}") for i, name in enumerate(returned_names)]
+
+    def endpoint(request):
+        body = json.loads(request.content)
+        if mode in {"allow", "force"}:
+            assert [spec["function"]["name"] for spec in body["tools"]] == ["allowed"]
+        if streaming:
+            deltas = [{**call, "index": i} for i, call in enumerate(calls)]
+            return sse([{"choices": [{"delta": {"content": "done", "tool_calls": deltas},
+                                      "finish_reason": "tool_calls" if calls else "stop"}]}])
+        return reply("done", calls)
+
+    options = {"tool_concurrency": 2}
+    if mode in {"allow", "force"}:
+        options["turn_policy"] = lambda _: ToolPolicy(mode, ("allowed",))
+    else:
+        options["tool_choice"] = (
+            {"type": "function", "function": {"name": "allowed"}}
+            if mode == "named" else mode
+        )
+    conversation = Conversation()
+    with httpx.Client(transport=httpx.MockTransport(endpoint)) as http:
+        model = ChatModel(model="demo-model", base_url="https://model.example/v1", http_client=http)
+        agent = Agent(model, tools=[allowed, outside_turn], **options)
+        result = (list(agent.run_stream("Check policy", conversation=conversation))[-1].result
+                  if streaming else agent.run("Check policy", conversation=conversation))
+    assert invoked == []
+    assert not result.ok and result.termination.reason == "validation_error"
+    assert result.model_calls == 1
+    assert conversation.to_list() == []
+    assert [t.kind for t in result.trajectory.transitions] == ["error"]
+
+
+@pytest.mark.parametrize("mode", ["allow", "force", "named", "required"])
+def test_agent_accepts_allowed_calls_then_returns_to_auto(mode):
+    requests = []
+    invoked = []
+
+    def allowed():
+        invoked.append("allowed")
+        return "done"
+
+    def endpoint(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        if len(requests) == 1:
+            return reply(calls=[tool_call("allowed", {})])
+        assert body["tool_choice"] == "auto"
+        return reply("finished")
+
+    if mode in {"allow", "force"}:
+        options = {"turn_policy": lambda view: ToolPolicy(mode, ("allowed",))
+                   if view.turn_index == 0 else ToolPolicy()}
+    else:
+        options = {"tool_choice": {"type": "function", "function": {"name": "allowed"}}
+                   if mode == "named" else mode}
+    with httpx.Client(transport=httpx.MockTransport(endpoint)) as http:
+        model = ChatModel(model="demo-model", base_url="https://model.example/v1", http_client=http)
+        result = Agent(model, tools=[allowed], **options).run("Check policy")
+    assert result.ok and result.text == "finished"
+    assert invoked == ["allowed"] and result.model_calls == 2
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("finish_reason", ["length", "content_filter", "unexpected"])
+def test_incomplete_response_cannot_execute_even_a_complete_final_tool(finish_reason, streaming):
+    invoked = []
+
+    def finish(answer: str):
+        invoked.append(answer)
+        return answer
+
+    call = tool_call("finish", {"answer": "complete arguments"})
+
+    def endpoint(request):
+        if streaming:
+            return sse([{"choices": [{"delta": {"tool_calls": [{**call, "index": 0}]},
+                                      "finish_reason": finish_reason}]}])
+        return reply(calls=[call], finish_reason=finish_reason)
+
+    with httpx.Client(transport=httpx.MockTransport(endpoint)) as http:
+        model = ChatModel(model="demo-model", base_url="https://model.example/v1", http_client=http)
+        agent = Agent(model, tools=[finish], final_tool="finish", max_turns=1)
+        result = (list(agent.run_stream("Finish"))[-1].result
+                  if streaming else agent.run("Finish"))
+    assert invoked == []
+    assert not result.ok and result.termination.reason == "validation_error"
+    assert finish_reason in result.termination.raw_error
+    assert result.model_calls == 1
+    assert [t.kind for t in result.trajectory.transitions] == ["error"]
+
+
+@pytest.mark.parametrize("finish_reason", ["tool_calls", "stop", None])
+def test_complete_final_tool_succeeds_on_last_turn(finish_reason):
+    invoked = []
+
+    def finish(answer: str):
+        invoked.append(answer)
+        return answer
+
+    def endpoint(request):
+        body = reply(calls=[tool_call("finish", {"answer": "done"})]).json()
+        body["choices"][0]["finish_reason"] = finish_reason
+        return httpx.Response(200, json=body)
+
+    with httpx.Client(transport=httpx.MockTransport(endpoint)) as http:
+        model = ChatModel(model="demo-model", base_url="https://model.example/v1", http_client=http)
+        result = Agent(model, tools=[finish], final_tool="finish", max_turns=1).run("Finish")
+    assert result.ok and result.termination.reason == "final_tool"
+    assert invoked == ["done"] and result.model_calls == 1
+    assert result.output == {"answer": "done"}

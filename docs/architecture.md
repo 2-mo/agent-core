@@ -64,6 +64,8 @@ Image and frame-reference blocks are generic representations. Local images can b
 
 Schema violations return `failed` before the handler runs. Expected business rejections should also return `ToolResult(status="failed", ...)`. Unhandled handler exceptions return `error` and terminate a standard Agent run.
 
+The Agent checks per-turn tool selection and model finish metadata before dispatching a batch. Calls outside an active `allow`/`force` policy, a missing required call, or tool calls from truncated or filtered replies end the run with `validation_error`; no handler in that batch runs. Tool argument errors remain recoverable tool results.
+
 Cancellation and deadlines are cooperative. They stop admission of further requests and are checked between steps. Already-running Python tools are not forcibly interrupted. A function-tool timeout stops waiting; it does not kill the worker or roll back external effects.
 
 Token budgets use reported usage. They prevent subsequent calls after exhaustion, but a completed request can overshoot the remaining budget. If token accounting is required and usage is missing, the run stops with `usage_unavailable`.

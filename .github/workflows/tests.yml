@@ -24,4 +24,5 @@ jobs:
       - run: uv sync --locked
       - run: uv run pytest -q
       - run: uv run python examples/offline_tools.py
+      - run: uv run python examples/local_catalog.py
       - run: uv build

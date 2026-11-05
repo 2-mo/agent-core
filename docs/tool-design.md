@@ -126,7 +126,7 @@ flowchart TD
 | Expected business rejection | `ToolResult(status="failed", ...)` | Return the tool's explanation and continue within the budget |
 | Invalid tool schema, handler exception, invalid normalized result | `error` | Record the outcome and terminate the run |
 
-These are tool-execution outcomes. A malformed model response, including missing or duplicate tool-call IDs, can fail before tool dispatch. `failed` permits another model decision; it does not automatically retry a handler or guarantee recovery.
+These are tool-execution outcomes. Before dispatch, the Agent checks the entire batch for tool-call IDs, per-turn tool selection, and completion metadata. Missing or duplicate IDs, policy violations, or tool calls from truncated/filtered replies terminate the run with `validation_error` without invoking any handler in that batch. `failed` permits another model decision; it does not automatically retry a handler or guarantee recovery.
 
 ## An agent can be a tool
 
@@ -144,7 +144,7 @@ When invoked by a parent Agent, the specialist shares the parent's budget lineag
 
 ## What the runtime owns
 
-- **Tool selection.** `ToolPolicy` selects schemas shown to the model and can request a particular tool. Application authorization belongs in the tool or domain host; schema selection is not an authorization mechanism.
+- **Tool selection.** `ToolPolicy` selects schemas and constrains execution in that turn. `allow` rejects calls outside the selected set; `force` additionally requires a call to its selected tool. The complete batch is checked before execution. Application-specific authorization still belongs in the tool or domain host.
 - **Completion.** `final_tool="name"` makes successful execution of that tool a completion condition. It remains an ordinary registered tool; a separate tool kind is unnecessary.
 - **Scheduling.** `tool_concurrency` controls concurrent tool execution. Completion events can arrive in completion order; conversation and trace entries are committed in the model's tool-call order. Concurrent tool effects are not rolled back when another call fails.
 - **Budgets.** The runtime checks cancellation, deadlines, and model-request/token budgets. `max_calls` counts model requests, including delegated requests; it is not a count of Python tool invocations.
@@ -163,4 +163,4 @@ Tool execution is ordinary Python execution. Function timeouts stop waiting but 
 | [types.py](../src/agent_core/tools/types.py) | Result normalization |
 | [agent.py](../src/agent_core/runtime/agent.py) | Delegation, scheduling, conversation updates, and recording |
 
-For a complete model/tool cycle without a model account, run [the offline example](../examples/offline_tools.py). For application-level usage, continue with the [API guide](api.md).
+For a complete model/tool cycle without a model account, run [the offline example](../examples/offline_tools.py). The [local document catalog](../examples/local_catalog.py) also demonstrates argument rejection, a corrected call, real file search, and saved traces. For application-level usage, continue with the [API guide](api.md).
