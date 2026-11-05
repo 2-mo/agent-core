@@ -64,10 +64,23 @@ print(result.text if result.ok else result.termination.reason)
 
 新增工具可先从普通函数开始；需要复杂约束时提供显式 schema，需要可恢复的业务拒绝时返回 `ToolResult(status="failed", ...)`。工具执行异常与预算耗尽都保留明确终止信息。
 
+## 工具调用的统一设计
+
+普通 Python 函数、声明式工具与子 Agent 共用一条执行路径：注册 schema，解析并校验调用参数，执行具体操作，再规范化结果。运行时负责将结果与调用配对，更新对话并记录轨迹。
+
+| 编写方式 | Agent 接入方式 |
+| --- | --- |
+| 带类型标注的函数 | `tools=[lookup]` |
+| 声明式工具类 | `tools=[LookupTool().to_function_tool()]` |
+| 专门的子 Agent | `tools=[specialist.as_tool()]` |
+
+工具用 `success`、可纠正的 `failed` 和执行异常 `error` 表达结果，运行时据此继续执行或结束任务。新增能力可以沿用已有的校验、调度和记录流程。完整说明见[工具调用与统一契约](docs/tool-design.zh-CN.md)。
+
 ## 进一步阅读
 
 - [示例说明](examples/README.md)：离线运行、模型接入、委派与流式输出。
 - [API 指南](docs/api.md)：工具、历史、策略、预算、并发和轨迹。
+- [工具调用与统一契约](docs/tool-design.zh-CN.md)：工具构建方式、调用链、结果语义与 Agent 委派。
 - [架构说明](docs/architecture.md)：模块边界与扩展接口。
 - [贡献说明](CONTRIBUTING.md)：开发环境与验证方式。
 
