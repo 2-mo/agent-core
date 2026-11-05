@@ -28,6 +28,8 @@ The package uses `httpx`, `jsonschema`, and `json-repair`. Worker scheduling use
 
 Tools implement `tool_name`, `schema()`, and `run(context, arguments)`. Functions can be adapted automatically. Classes can use `DeclarativeTool`. A `ToolSet` supplies named schemas and dispatch without requiring a common implementation base class.
 
+See [Tool design](tool-design.md) ([中文](tool-design.zh-CN.md)) for the shared calling sequence, authoring forms, result semantics, and delegation boundary.
+
 ## One run
 
 1. `Agent` creates an independent run host, conversation view, registry, and budget.

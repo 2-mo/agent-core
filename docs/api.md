@@ -28,6 +28,8 @@ Generation options can be set on `ChatModel`, `Agent`, or an individual call. An
 
 ## Tool definitions
 
+For the design behind these interfaces, see [Tool calling as a shared contract](tool-design.md) ([中文](tool-design.zh-CN.md)).
+
 Pass typed Python functions directly to `Agent(tools=[...])`, or construct a definition explicitly:
 
 ```python

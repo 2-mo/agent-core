@@ -86,6 +86,18 @@ with ChatModel(
 
 The endpoint must support the features you request, including function tools and streaming when used. Each request is sent once; errors are returned through the run result.
 
+## Unified tool contract
+
+Python functions, declarative tools, and delegated agents share one execution path: register a schema, parse and validate a call, execute the handler, and normalize the result. The runtime pairs results with calls and records the conversation and trajectory.
+
+| Authoring form | Agent entry |
+| --- | --- |
+| Typed function | `tools=[lookup]` |
+| Declarative class | `tools=[LookupTool().to_function_tool()]` |
+| Specialized agent | `tools=[specialist.as_tool()]` |
+
+Tools report `success`, a recoverable `failed`, or an execution `error`. That shared vocabulary lets the runtime compose capabilities and make completion decisions consistently. See [Tool design](docs/tool-design.md) for the contracts, calling sequence, and examples.
+
 ## Execution model
 
 ```mermaid
@@ -109,6 +121,7 @@ flowchart LR
 - [Agent delegation](examples/delegation.py): expose a specialist as a tool.
 - [Streaming](examples/streaming.py): read events as they arrive.
 - [API guide](docs/api.md): tools, conversations, budgets, batching, and traces.
+- [Tool design](docs/tool-design.md): one contract for functions, declarative tools, and agents.
 - [Architecture](docs/architecture.md): contracts, execution flow, and extension points.
 
 ## Development
